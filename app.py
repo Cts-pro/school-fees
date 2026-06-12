@@ -5,7 +5,8 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_permanent_key_123'
-EXCEL_FILE = '/data/school_billing_system_v3.xlsx'
+# FREE TIER FIX: Changed path from /data/ to local application directory folder
+EXCEL_FILE = 'school_billing_system_free.xlsx'
 
 font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
 font_body = Font(name="Calibri", size=11)
@@ -15,9 +16,6 @@ fill_locked = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="s
 fill_pending = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
 
 def init_excel():
-    dirname = os.path.dirname(EXCEL_FILE)
-    if dirname and not os.path.exists(dirname):
-        os.makedirs(dirname, exist_ok=True)
     if not os.path.exists(EXCEL_FILE):
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -33,8 +31,7 @@ def init_excel():
         wb.save(EXCEL_FILE)
 
 def get_all_records_from_excel():
-    if not os.path.exists(EXCEL_FILE):
-        init_excel()
+    init_excel()
     wb = openpyxl.load_workbook(EXCEL_FILE)
     all_records = []
     for sheet_name in wb.sheetnames:
@@ -302,7 +299,6 @@ def generate_invoice(sheet_name, row_id):
             .trust-title {{ font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #333; }}
             .table-invoice th, .table-invoice td {{ border: 1px solid #000 !important; font-size: 14px; padding: 6px; }}
             .table-invoice th {{ background-color: #f2f2f2 !important; }}
-            .d-print-none button, .d-print-none a {{ width: 100% !important; }}
         </style>
     </head>
     <body>
