@@ -5,7 +5,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_permanent_key_123'
-EXCEL_FILE = 'school_fees_by_class.xlsx'
+EXCEL_FILE = '/data/school_fees_by_class.xlsx'
 
 font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
 font_body = Font(name="Calibri", size=11)
@@ -15,12 +15,16 @@ fill_locked = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="s
 fill_pending = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
 
 def init_excel():
+    dirname = os.path.dirname(EXCEL_FILE)
+    if dirname and not os.path.exists(dirname):
+        os.makedirs(dirname, exist_ok=True)
     if not os.path.exists(EXCEL_FILE):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Grade 5"
         ws.views.sheetView[0].showGridLines = True
-        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked"]
+        # Excel sheet database matrix headers
+        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked", "Invoice Number"]
         ws.append(headers)
         for col, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col)
@@ -40,18 +44,28 @@ def get_all_records_from_excel():
             if ws.cell(row=row, column=1).value is None:
                 continue
             all_records.append({
-                "id": ws.cell(row=row, column=1).value,
+                "id": int(ws.cell(row=row, column=1).value),
                 "name": ws.cell(row=row, column=2).value,
                 "category": str(ws.cell(row=row, column=3).value or "Fees").strip(),
-                "particulars": ws.cell(row=row, column=4).value or "",
-                "quantities": ws.cell(row=row, column=5).value or "",
-                "amounts": ws.cell(row=row, column=6).value or "",
+                "particulars": str(ws.cell(row=row, column=4).value or ""),
+                "quantities": str(ws.cell(row=row, column=5).value or ""),
+                "amounts": str(ws.cell(row=row, column=6).value or ""),
                 "total_amount": float(ws.cell(row=row, column=7).value or 0.0),
                 "class": sheet_name,
                 "status": ws.cell(row=row, column=8).value,
-                "is_locked": int(ws.cell(row=row, column=9).value or 0)
+                "is_locked": int(ws.cell(row=row, column=9).value or 0),
+                "invoice_num": str(ws.cell(row=row, column=10).value or "DRAFT-UNASSIGNED")
             })
     return all_records
+
+def get_next_invoice_number_for_category(category):
+    records = get_all_records_from_excel()
+    count = 0
+    for r in records:
+        if r['category'] == category and r['is_locked'] == 1:
+            count += 1
+    prefix = {"Fees": "Tuition-", "Books": "Book-", "Uniform": "Uniform-"}
+    return f"{prefix.get(category, 'INV-')}{count + 1:04d}"
 
 @app.route('/')
 def index():
@@ -93,14 +107,14 @@ def add_student():
         amounts_list = [float(x.strip()) for x in amounts_str.split(',')]
         total_amount = sum(amounts_list)
     except ValueError:
-        flash("Formatting Error: Ensure individual amounts are comma-separated numbers.")
+        flash("Formatting Error: Individual pricing array evaluation skipped.")
         return redirect(url_for('index'))
         
     wb = openpyxl.load_workbook(EXCEL_FILE)
     if student_class not in wb.sheetnames:
         ws = wb.create_sheet(title=student_class)
         ws.views.sheetView[0].showGridLines = True
-        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked"]
+        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked", "Invoice Number"]
         ws.append(headers)
         for col, h in enumerate(headers, 1):
             ws.cell(row=1, column=col).font = font_header
@@ -111,29 +125,80 @@ def add_student():
     all_records = get_all_records_from_excel()
     next_id = len(all_records) + 1
     
-    ws.append([next_id, student_name, category, particulars, quantities, amounts_str, total_amount, "Pending", 0])
+    ws.append([next_id, student_name, category, particulars, quantities, amounts_str, total_amount, "Pending", 0, "DRAFT-UNASSIGNED"])
     
     new_row_idx = ws.max_row
-    for col in range(1, 10):
+    for col in range(1, 11):
         cell = ws.cell(row=new_row_idx, column=col)
         cell.fill = fill_pending
         cell.font = font_body
         if col == 7:
-            cell.number_format = 'R#,##0.00'
+            cell.number_format = 'Rs#,##0.00'
             
     wb.save(EXCEL_FILE)
-    flash(f"Record created successfully for {student_name} under {category}!")
+    flash(f"Draft saved successfully for {student_name}!")
     return redirect(url_for('index'))
 
-@app.route('/download_database')
-def download_database():
+@app.route('/edit_student', methods=['POST'])
+def edit_student():
     if 'user_role' not in session:
         return redirect(url_for('login'))
-    if os.path.exists(EXCEL_FILE):
-        return send_file(EXCEL_FILE, as_attachment=True, download_name="vinayaka_school_database.xlsx")
-    else:
-        flash("Data registry document is not generated yet.")
+        
+    row_id = int(request.form['record_id'])
+    sheet_class = request.form['sheet_class']
+    
+    updated_name = request.form['edit_name']
+    updated_class = request.form['edit_class'].strip()
+    
+    particulars_list = request.form.getlist('edit_particulars')
+    quantities_list = request.form.getlist('edit_quantities')
+    amounts_list = request.form.getlist('edit_amounts')
+    
+    parts_str = ",".join(particulars_list)
+    qtys_str = ",".join(quantities_list)
+    ams_str = ",".join(amounts_list)
+    
+    try:
+        total_amount = sum([float(x) for x in amounts_list])
+    except ValueError:
+        flash("Numeric evaluation error on modifying cell blocks.")
         return redirect(url_for('index'))
+        
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    if sheet_class in wb.sheetnames:
+        ws = wb[sheet_name] if 'sheet_name' in locals() else wb[sheet_class]
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == row_id:
+                if ws.cell(row=row, column=9).value == 1:
+                    flash("Action Blocked: Document is already permanent.")
+                    return redirect(url_for('index'))
+                
+                ws.cell(row=row, column=2).value = updated_name
+                ws.cell(row=row, column=4).value = parts_str
+                ws.cell(row=row, column=5).value = qtys_str
+                ws.cell(row=row, column=6).value = ams_str
+                ws.cell(row=row, column=7).value = total_amount
+                
+                # Move to different class tab sheet if modified by staff
+                if updated_class != sheet_class:
+                    category = ws.cell(row=row, column=3).value
+                    status = ws.cell(row=row, column=8).value
+                    ws.delete_rows(row, 1)
+                    
+                    if updated_class not in wb.sheetnames:
+                        new_ws = wb.create_sheet(title=updated_class)
+                        new_ws.views.sheetView[0].showGridLines = True
+                        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked", "Invoice Number"]
+                        new_ws.append(headers)
+                    else:
+                        new_ws = wb[updated_class]
+                        
+                    new_ws.append([row_id, updated_name, category, parts_str, qtys_str, ams_str, total_amount, status, 0, "DRAFT-UNASSIGNED"])
+                break
+                
+    wb.save(EXCEL_FILE)
+    flash("Changes committed to draft matrix successfully.")
+    return redirect(url_for('index'))
 
 @app.route('/generate_invoice/<sheet_name>/<int:row_id>')
 def generate_invoice(sheet_name, row_id):
@@ -145,21 +210,30 @@ def generate_invoice(sheet_name, row_id):
         ws = wb[sheet_name]
         for row in range(2, ws.max_row + 1):
             if ws.cell(row=row, column=1).value == row_id:
-                ws.cell(row=row, column=8).value = "Invoiced"
-                ws.cell(row=row, column=9).value = 1
-                for col in range(1, 10):
-                    ws.cell(row=row, column=col).fill = fill_locked
-                    ws.cell(row=row, column=col).font = font_locked
+                category = str(ws.cell(row=row, column=3).value or "Fees").strip()
+                is_locked = int(ws.cell(row=row, column=9).value or 0)
                 
+                if is_locked == 0:
+                    assigned_invoice = get_next_invoice_number_for_category(category)
+                    ws.cell(row=row, column=8).value = "Invoiced"
+                    ws.cell(row=row, column=9).value = 1
+                    ws.cell(row=row, column=10).value = assigned_invoice
+                    for col in range(1, 11):
+                        ws.cell(row=row, column=col).fill = fill_locked
+                        ws.cell(row=row, column=col).font = font_locked
+                else:
+                    assigned_invoice = str(ws.cell(row=row, column=10).value)
+                    
                 record_data = {
                     "id": row_id,
                     "name": ws.cell(row=row, column=2).value,
-                    "category": str(ws.cell(row=row, column=3).value or "Fees").strip(),
+                    "category": category,
                     "particulars": str(ws.cell(row=row, column=4).value).split(','),
                     "quantities": str(ws.cell(row=row, column=5).value).split(','),
                     "amounts": str(ws.cell(row=row, column=6).value).split(','),
                     "total": float(ws.cell(row=row, column=7).value or 0.0),
-                    "class": sheet_name
+                    "class": sheet_name,
+                    "invoice_num": assigned_invoice
                 }
                 wb.save(EXCEL_FILE)
                 break
@@ -168,8 +242,10 @@ def generate_invoice(sheet_name, row_id):
     for i in range(len(record_data['particulars'])):
         part = record_data['particulars'][i].strip()
         qty = record_data['quantities'][i].strip() if i < len(record_data['quantities']) else "1"
-        amt = record_data['amounts'][i].strip() if i < len(record_data['amounts']) else "0.00"
-        table_rows_html += f"<tr><td class='text-center'>{i+1}</td><td>{part}</td><td class='text-center'>{qty}</td><td class='text-end'>Rs {float(amt):,.2f}</td></tr>"
+        line_total = float(record_data['amounts'][i].strip()) if i < len(record_data['amounts']) else 0.0
+        rate = line_total / float(qty) if float(qty) > 0 else 0.0
+        
+        table_rows_html += f"<tr><td class='text-center'>{i+1}</td><td>{part}</td><td class='text-center'>{qty}</td><td class='text-end'>Rs {rate:,.2f}</td><td class='text-end'>Rs {line_total:,.2f}</td></tr>"
 
     return f"""
     <html>
@@ -180,9 +256,8 @@ def generate_invoice(sheet_name, row_id):
             body {{ background: #fdfdfd; font-family: Arial, sans-serif; color: #000; }}
             .outer-container {{ max-width: 850px; margin: 20px auto; padding: 20px; border: 1px solid #ccc; background: #fff; }}
             .header-border {{ border: 1px solid #000; padding: 20px; }}
-            .school-title {{ font-size: 24px; font-weight: bold; margin-bottom: 2px; text-transform: uppercase; }}
+            .school-title {{ font-size: 24px; font-weight: bold; text-transform: uppercase; }}
             .trust-title {{ font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #333; }}
-            .meta-info {{ font-size: 13px; margin-bottom: 2px; }}
             .table-invoice th, .table-invoice td {{ border: 1px solid #000 !important; font-size: 14px; padding: 6px; }}
             .table-invoice th {{ background-color: #f2f2f2 !important; }}
         </style>
@@ -204,21 +279,21 @@ def generate_invoice(sheet_name, row_id):
                 <hr style="border-top: 1px solid #000; margin: 15px 0;">
                 <div class="row mb-4" style="font-size: 15px; line-height: 1.6;">
                     <div class="col-6">
-                        <div><strong>Invoice #:</strong> {record_data['id']}</div>
+                        <div><strong>Invoice #:</strong> {record_data['invoice_num']}</div>
                         <div><strong>Invoice date:</strong> 11-06-2026</div>
-                        <div><strong>Amount:</strong> Rs {record_data['total']:,.2f}</div>
+                        <div><strong>Account Category:</strong> {record_data['category']}</div>
                     </div>
                     <div class="col-6" style="padding-left: 80px;">
                         <div><strong>Name:</strong> {record_data['name']}</div>
                         <div><strong>Class:</strong> {record_data['class']}</div>
-                        <div><strong>Guardian:</strong> --</div>
+                        <div><strong>Amount Due:</strong> Rs {record_data['total']:,.2f}</div>
                     </div>
                 </div>
                 <table class="table table-bordered table-invoice mb-0">
-                    <thead><tr><th class="text-center" style="width: 80px;">SL. No</th><th>Particulars</th><th class="text-center" style="width: 100px;">Qty</th><th class="text-end" style="width: 160px;">Amount</th></tr></thead>
+                    <thead><tr><th class="text-center" style="width: 70px;">SL. No</th><th>Particulars Description</th><th class="text-center" style="width: 80px;">Qty</th><th class="text-end" style="width: 130px;">Rate</th><th class="text-end" style="width: 140px;">Amount</th></tr></thead>
                     <tbody>
                         {table_rows_html}
-                        <tr class="fw-bold"><td colspan="3" class="text-end">Total</td><td class="text-end">Rs {record_data['total']:,.2f}</td></tr>
+                        <tr class="fw-bold"><td colspan="4" class="text-end">Total</td><td class="text-end">Rs {record_data['total']:,.2f}</td></tr>
                     </tbody>
                 </table>
                 <div class="row align-items-end mt-5" style="min-height: 80px;"><div class="col-12 text-end" style="font-size: 14px; padding-right: 30px;"><div>Signature</div></div></div>
@@ -228,6 +303,14 @@ def generate_invoice(sheet_name, row_id):
     </body>
     </html>
     """
+
+@app.route('/download_database')
+def download_database():
+    if 'user_role' not in session:
+        return redirect(url_for('login'))
+    if os.path.exists(EXCEL_FILE):
+        return send_file(EXCEL_FILE, as_attachment=True, download_name="vinayaka_school_database.xlsx")
+    return redirect(url_for('index'))
 
 @app.route('/logout')
 def logout():
