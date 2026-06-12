@@ -23,7 +23,6 @@ def init_excel():
         ws = wb.active
         ws.title = "Grade 5"
         ws.views.sheetView[0].showGridLines = True
-        # Excel sheet database matrix headers
         headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked", "Invoice Number"]
         ws.append(headers)
         for col, h in enumerate(headers, 1):
@@ -107,7 +106,7 @@ def add_student():
         amounts_list = [float(x.strip()) for x in amounts_str.split(',')]
         total_amount = sum(amounts_list)
     except ValueError:
-        flash("Formatting Error: Individual pricing array evaluation skipped.")
+        flash("Formatting Error: Pricing computation aborted.")
         return redirect(url_for('index'))
         
     wb = openpyxl.load_workbook(EXCEL_FILE)
@@ -123,7 +122,7 @@ def add_student():
         ws = wb[student_class]
         
     all_records = get_all_records_from_excel()
-    next_id = len(all_records) + 1
+    next_id = max([r['id'] for r in all_records]) + 1 if all_records else 1
     
     ws.append([next_id, student_name, category, particulars, quantities, amounts_str, total_amount, "Pending", 0, "DRAFT-UNASSIGNED"])
     
@@ -145,179 +144,4 @@ def edit_student():
         return redirect(url_for('login'))
         
     row_id = int(request.form['record_id'])
-    sheet_class = request.form['sheet_class']
-    
-    updated_name = request.form['edit_name']
-    updated_class = request.form['edit_class'].strip()
-    
-    particulars_list = request.form.getlist('edit_particulars')
-    quantities_list = request.form.getlist('edit_quantities')
-    amounts_list = request.form.getlist('edit_amounts')
-    
-    parts_str = ",".join(particulars_list)
-    qtys_str = ",".join(quantities_list)
-    ams_str = ",".join(amounts_list)
-    
-    try:
-        total_amount = sum([float(x) for x in amounts_list])
-    except ValueError:
-        flash("Numeric evaluation error on modifying cell blocks.")
-        return redirect(url_for('index'))
-        
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    if sheet_class in wb.sheetnames:
-        ws = wb[sheet_name] if 'sheet_name' in locals() else wb[sheet_class]
-        for row in range(2, ws.max_row + 1):
-            if ws.cell(row=row, column=1).value == row_id:
-                if ws.cell(row=row, column=9).value == 1:
-                    flash("Action Blocked: Document is already permanent.")
-                    return redirect(url_for('index'))
-                
-                ws.cell(row=row, column=2).value = updated_name
-                ws.cell(row=row, column=4).value = parts_str
-                ws.cell(row=row, column=5).value = qtys_str
-                ws.cell(row=row, column=6).value = ams_str
-                ws.cell(row=row, column=7).value = total_amount
-                
-                # Move to different class tab sheet if modified by staff
-                if updated_class != sheet_class:
-                    category = ws.cell(row=row, column=3).value
-                    status = ws.cell(row=row, column=8).value
-                    ws.delete_rows(row, 1)
-                    
-                    if updated_class not in wb.sheetnames:
-                        new_ws = wb.create_sheet(title=updated_class)
-                        new_ws.views.sheetView[0].showGridLines = True
-                        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked", "Invoice Number"]
-                        new_ws.append(headers)
-                    else:
-                        new_ws = wb[updated_class]
-                        
-                    new_ws.append([row_id, updated_name, category, parts_str, qtys_str, ams_str, total_amount, status, 0, "DRAFT-UNASSIGNED"])
-                break
-                
-    wb.save(EXCEL_FILE)
-    flash("Changes committed to draft matrix successfully.")
-    return redirect(url_for('index'))
-
-@app.route('/generate_invoice/<sheet_name>/<int:row_id>')
-def generate_invoice(sheet_name, row_id):
-    if 'user_role' not in session:
-        return redirect(url_for('login'))
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    record_data = {}
-    if sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-        for row in range(2, ws.max_row + 1):
-            if ws.cell(row=row, column=1).value == row_id:
-                category = str(ws.cell(row=row, column=3).value or "Fees").strip()
-                is_locked = int(ws.cell(row=row, column=9).value or 0)
-                
-                if is_locked == 0:
-                    assigned_invoice = get_next_invoice_number_for_category(category)
-                    ws.cell(row=row, column=8).value = "Invoiced"
-                    ws.cell(row=row, column=9).value = 1
-                    ws.cell(row=row, column=10).value = assigned_invoice
-                    for col in range(1, 11):
-                        ws.cell(row=row, column=col).fill = fill_locked
-                        ws.cell(row=row, column=col).font = font_locked
-                else:
-                    assigned_invoice = str(ws.cell(row=row, column=10).value)
-                    
-                record_data = {
-                    "id": row_id,
-                    "name": ws.cell(row=row, column=2).value,
-                    "category": category,
-                    "particulars": str(ws.cell(row=row, column=4).value).split(','),
-                    "quantities": str(ws.cell(row=row, column=5).value).split(','),
-                    "amounts": str(ws.cell(row=row, column=6).value).split(','),
-                    "total": float(ws.cell(row=row, column=7).value or 0.0),
-                    "class": sheet_name,
-                    "invoice_num": assigned_invoice
-                }
-                wb.save(EXCEL_FILE)
-                break
-
-    table_rows_html = ""
-    for i in range(len(record_data['particulars'])):
-        part = record_data['particulars'][i].strip()
-        qty = record_data['quantities'][i].strip() if i < len(record_data['quantities']) else "1"
-        line_total = float(record_data['amounts'][i].strip()) if i < len(record_data['amounts']) else 0.0
-        rate = line_total / float(qty) if float(qty) > 0 else 0.0
-        
-        table_rows_html += f"<tr><td class='text-center'>{i+1}</td><td>{part}</td><td class='text-center'>{qty}</td><td class='text-end'>Rs {rate:,.2f}</td><td class='text-end'>Rs {line_total:,.2f}</td></tr>"
-
-    return f"""
-    <html>
-    <head>
-        <title>Invoice - {record_data['name']}</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-        <style>
-            body {{ background: #fdfdfd; font-family: Arial, sans-serif; color: #000; }}
-            .outer-container {{ max-width: 850px; margin: 20px auto; padding: 20px; border: 1px solid #ccc; background: #fff; }}
-            .header-border {{ border: 1px solid #000; padding: 20px; }}
-            .school-title {{ font-size: 24px; font-weight: bold; text-transform: uppercase; }}
-            .trust-title {{ font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #333; }}
-            .table-invoice th, .table-invoice td {{ border: 1px solid #000 !important; font-size: 14px; padding: 6px; }}
-            .table-invoice th {{ background-color: #f2f2f2 !important; }}
-        </style>
-    </head>
-    <body>
-        <div class="outer-container">
-            <div class="header-border">
-                <div class="row align-items-center mb-3">
-                    <div class="col-3 text-center">
-                        <div style="border: 1px solid #333; padding: 15px; font-size: 11px; font-weight: bold;">LOGO PLACEHOLDER</div>
-                    </div>
-                    <div class="col-9 text-center" style="padding-right: 50px;">
-                        <div class="school-title">VINAYAKA HIGH SCHOOL</div>
-                        <div class="trust-title">SRI ANNAPOORNESHWARI EDUCATION TRUST R</div>
-                        <div class="meta-info">Taripura - 571415, Srirangapatna Taluk, Mandya District</div>
-                        <div class="meta-info"><strong>Mob:</strong> 8971577685</div>
-                    </div>
-                </div>
-                <hr style="border-top: 1px solid #000; margin: 15px 0;">
-                <div class="row mb-4" style="font-size: 15px; line-height: 1.6;">
-                    <div class="col-6">
-                        <div><strong>Invoice #:</strong> {record_data['invoice_num']}</div>
-                        <div><strong>Invoice date:</strong> 11-06-2026</div>
-                        <div><strong>Account Category:</strong> {record_data['category']}</div>
-                    </div>
-                    <div class="col-6" style="padding-left: 80px;">
-                        <div><strong>Name:</strong> {record_data['name']}</div>
-                        <div><strong>Class:</strong> {record_data['class']}</div>
-                        <div><strong>Amount Due:</strong> Rs {record_data['total']:,.2f}</div>
-                    </div>
-                </div>
-                <table class="table table-bordered table-invoice mb-0">
-                    <thead><tr><th class="text-center" style="width: 70px;">SL. No</th><th>Particulars Description</th><th class="text-center" style="width: 80px;">Qty</th><th class="text-end" style="width: 130px;">Rate</th><th class="text-end" style="width: 140px;">Amount</th></tr></thead>
-                    <tbody>
-                        {table_rows_html}
-                        <tr class="fw-bold"><td colspan="4" class="text-end">Total</td><td class="text-end">Rs {record_data['total']:,.2f}</td></tr>
-                    </tbody>
-                </table>
-                <div class="row align-items-end mt-5" style="min-height: 80px;"><div class="col-12 text-end" style="font-size: 14px; padding-right: 30px;"><div>Signature</div></div></div>
-            </div>
-            <div class="d-print-none mt-4 d-flex gap-2"><button class="btn btn-primary w-100 fw-bold" onclick="window.print()">Print This Invoice</button><a href="/" class="btn btn-outline-secondary w-100">Return to Portal</a></div>
-        </div>
-    </body>
-    </html>
-    """
-
-@app.route('/download_database')
-def download_database():
-    if 'user_role' not in session:
-        return redirect(url_for('login'))
-    if os.path.exists(EXCEL_FILE):
-        return send_file(EXCEL_FILE, as_attachment=True, download_name="vinayaka_school_database.xlsx")
-    return redirect(url_for('index'))
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-init_excel()
-
-if __name__ == '__main__':
-    app.run(debug=False)
+    sheet_class = request.form
