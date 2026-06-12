@@ -20,41 +20,18 @@ def init_excel():
         ws = wb.active
         ws.title = "Grade 5"
         ws.views.sheetView[0].showGridLines = True
-        headers = ["Record ID", "Student Name", "Fee Amount ($)", "Status", "Is Locked"]
+        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked"]
         ws.append(headers)
         for col, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col)
             cell.font = font_header
             cell.fill = fill_header
             cell.alignment = Alignment(horizontal="center")
-        samples = [
-            (1, "John Doe", 500.00, "Invoiced", 1),
-            (2, "Alice Smith", 500.00, "Pending", 0)
-        ]
-        for r_idx, row in enumerate(samples, 2):
-            ws.append(row)
-            current_fill = fill_locked if row[4] == 1 else fill_pending
-            current_font = font_locked if row[4] == 1 else font_body
-            for c_idx in range(1, 6):
-                cell = ws.cell(row=r_idx, column=c_idx)
-                cell.font = current_font
-                cell.fill = current_fill
-                if c_idx == 3:
-                    cell.number_format = '$#,##0.00'
-                    
-        ws2 = wb.create_sheet(title="Grade 6")
-        ws2.views.sheetView[0].showGridLines = True
-        ws2.append(headers)
-        for col, h in enumerate(headers, 1):
-            ws2.cell(row=1, column=col).font = font_header
-            ws2.cell(row=1, column=col).fill = fill_header
-        ws2.append((3, "Jane Smith", 600.00, "Pending", 0))
-        for c_idx in range(1, 6):
-            ws2.cell(row=2, column=c_idx).fill = fill_pending
-            ws2.cell(row=2, column=c_idx).font = font_body
         wb.save(EXCEL_FILE)
 
 def get_all_records_from_excel():
+    if not os.path.exists(EXCEL_FILE):
+        init_excel()
     wb = openpyxl.load_workbook(EXCEL_FILE)
     all_records = []
     for sheet_name in wb.sheetnames:
@@ -65,10 +42,14 @@ def get_all_records_from_excel():
             all_records.append({
                 "id": ws.cell(row=row, column=1).value,
                 "name": ws.cell(row=row, column=2).value,
+                "category": str(ws.cell(row=row, column=3).value or "Fees").strip(),
+                "particulars": ws.cell(row=row, column=4).value or "",
+                "quantities": ws.cell(row=row, column=5).value or "",
+                "amounts": ws.cell(row=row, column=6).value or "",
+                "total_amount": float(ws.cell(row=row, column=7).value or 0.0),
                 "class": sheet_name,
-                "amount": ws.cell(row=row, column=3).value,
-                "status": ws.cell(row=row, column=4).value,
-                "is_locked": ws.cell(row=row, column=5).value
+                "status": ws.cell(row=row, column=8).value,
+                "is_locked": int(ws.cell(row=row, column=9).value or 0)
             })
     return all_records
 
@@ -96,23 +77,52 @@ def login():
             flash('Invalid login credentials.')
     return render_template('index.html', login_page=True)
 
-@app.route('/update_fee/<sheet_name>/<int:row_id>', methods=['POST'])
-def update_fee(sheet_name, row_id):
+@app.route('/add_student', methods=['POST'])
+def add_student():
     if 'user_role' not in session:
         return redirect(url_for('login'))
-    new_amount = float(request.form['fee_amount'])
+        
+    student_name = request.form['student_name']
+    student_class = request.form['student_class'].strip()
+    category = request.form['category'].strip()
+    particulars = request.form['particulars']
+    quantities = request.form['quantities']
+    amounts_str = request.form['amounts']
+    
+    try:
+        amounts_list = [float(x.strip()) for x in amounts_str.split(',')]
+        total_amount = sum(amounts_list)
+    except ValueError:
+        flash("Formatting Error: Ensure individual amounts are comma-separated numbers.")
+        return redirect(url_for('index'))
+        
     wb = openpyxl.load_workbook(EXCEL_FILE)
-    if sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-        for row in range(2, ws.max_row + 1):
-            if ws.cell(row=row, column=1).value == row_id:
-                if ws.cell(row=row, column=5).value == 1:
-                    flash('CRITICAL EXCEPTION: Edit denied. Row is permanently locked.')
-                else:
-                    ws.cell(row=row, column=3).value = new_amount
-                    wb.save(EXCEL_FILE)
-                    flash(f'Successfully updated record {row_id} inside sheet tab "{sheet_name}".')
-                break
+    if student_class not in wb.sheetnames:
+        ws = wb.create_sheet(title=student_class)
+        ws.views.sheetView[0].showGridLines = True
+        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked"]
+        ws.append(headers)
+        for col, h in enumerate(headers, 1):
+            ws.cell(row=1, column=col).font = font_header
+            ws.cell(row=1, column=col).fill = fill_header
+    else:
+        ws = wb[student_class]
+        
+    all_records = get_all_records_from_excel()
+    next_id = len(all_records) + 1
+    
+    ws.append([next_id, student_name, category, particulars, quantities, amounts_str, total_amount, "Pending", 0])
+    
+    new_row_idx = ws.max_row
+    for col in range(1, 10):
+        cell = ws.cell(row=new_row_idx, column=col)
+        cell.fill = fill_pending
+        cell.font = font_body
+        if col == 7:
+            cell.number_format = '₹#,##0.00'
+            
+    wb.save(EXCEL_FILE)
+    flash(f"Record created successfully for {student_name} under {category}!")
     return redirect(url_for('index'))
 
 @app.route('/generate_invoice/<sheet_name>/<int:row_id>')
@@ -125,47 +135,50 @@ def generate_invoice(sheet_name, row_id):
         ws = wb[sheet_name]
         for row in range(2, ws.max_row + 1):
             if ws.cell(row=row, column=1).value == row_id:
-                ws.cell(row=row, column=4).value = "Invoiced"
-                ws.cell(row=row, column=5).value = 1
-                for col in range(1, 6):
+                ws.cell(row=row, column=8).value = "Invoiced"
+                ws.cell(row=row, column=9).value = 1
+                for col in range(1, 10):
                     ws.cell(row=row, column=col).fill = fill_locked
                     ws.cell(row=row, column=col).font = font_locked
+                
                 record_data = {
                     "id": row_id,
                     "name": ws.cell(row=row, column=2).value,
-                    "class": sheet_name,
-                    "amount": ws.cell(row=row, column=3).value,
-                    "status": "Invoiced"
+                    "category": str(ws.cell(row=row, column=3).value or "Fees").strip(),
+                    "particulars": str(ws.cell(row=row, column=4).value).split(','),
+                    "quantities": str(ws.cell(row=row, column=5).value).split(','),
+                    "amounts": str(ws.cell(row=row, column=6).value).split(','),
+                    "total": float(ws.cell(row=row, column=7).value or 0.0),
+                    "class": sheet_name
                 }
                 wb.save(EXCEL_FILE)
                 break
+
+    table_rows_html = ""
+    for i in range(len(record_data['particulars'])):
+        part = record_data['particulars'][i].strip()
+        qty = record_data['quantities'][i].strip() if i < len(record_data['quantities']) else "1"
+        amt = record_data['amounts'][i].strip() if i < len(record_data['amounts']) else "0.00"
+        table_rows_html += f"<tr><td class='text-center'>{i+1}</td><td>{part}</td><td class='text-center'>{qty}</td><td class='text-end'>₹ {float(amt):,.2f}</td></tr>"
+
     return f"""
     <html>
-    <head><title>Invoice - {record_data['name']}</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"></head>
-    <body class="p-5">
-        <div class="card p-4 mx-auto" style="max-width: 600px; border: 2px dashed #333;">
-            <h3 class="text-center text-uppercase fw-bold">Official School Receipt</h3>
-            <hr>
-            <p><strong>System Tracking ID:</strong> REC-{record_data['id']}</p>
-            <p><strong>Class Sheet Reference:</strong> {record_data['class']}</p>
-            <p><strong>Student Target:</strong> {record_data['name']}</p>
-            <p><strong>Status Rule:</strong> <span class="badge bg-danger">Archived & Immutable</span></p>
-            <hr>
-            <h4>Amount Authenticated: ${record_data['amount']:.2f}</h4>
-            <hr>
-            <button class="btn btn-dark d-print-none w-100" onclick="window.print()">Print Output Document</button>
-            <a href="/" class="btn btn-outline-secondary d-print-none w-100 mt-2">Return to Dashboard</a>
-        </div>
-    </body>
-    </html>
-    """
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-init_excel()
-
-if __name__ == '__main__':
-    app.run(debug=False)
+    <head>
+        <title>Invoice - {record_data['name']}</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+        <style>
+            body {{ background: #fdfdfd; font-family: Arial, sans-serif; color: #000; }}
+            .outer-container {{ max-width: 850px; margin: 20px auto; padding: 20px; border: 1px solid #ccc; background: #fff; }}
+            .header-border {{ border: 1px solid #000; padding: 20px; }}
+            .school-title {{ font-size: 24px; font-weight: bold; margin-bottom: 2px; text-transform: uppercase; }}
+            .trust-title {{ font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #333; }}
+            .meta-info {{ font-size: 13px; margin-bottom: 2px; }}
+            .table-invoice th, .table-invoice td {{ border: 1px solid #000 !important; font-size: 14px; padding: 6px; }}
+            .table-invoice th {{ background-color: #f2f2f2 !important; }}
+        </style>
+    </head>
+    <body>
+        <div class="outer-container">
+            <div class="header-border">
+                <div class="row align-items-center mb-3">
+                    <div class="col-3
