@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
@@ -124,6 +124,17 @@ def add_student():
     wb.save(EXCEL_FILE)
     flash(f"Record created successfully for {student_name} under {category}!")
     return redirect(url_for('index'))
+
+@app.route('/download_database')
+def download_database():
+    """Allows Admin/Staff to securely trigger direct browser sheet download file streams."""
+    if 'user_role' not in session:
+        return redirect(url_for('login'))
+    if os.path.exists(EXCEL_FILE):
+        return send_file(EXCEL_FILE, as_attachment=True, download_name="vinayaka_school_database.xlsx")
+    else:
+        flash("Data registry document is not generated yet.")
+        return redirect(url_for('index'))
 
 @app.route('/generate_invoice/<sheet_name>/<int:row_id>')
 def generate_invoice(sheet_name, row_id):
