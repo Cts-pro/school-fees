@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <title>Vinayaka High School - Fee Portal</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 <body class="bg-light">
-    <div class="container mt-5">
+    <div class="container mt-5 mb-5">
         {% with messages = get_flashed_messages() %}
           {% if messages %}
             {% for message in messages %}
@@ -21,7 +22,7 @@
                 <div class="card shadow-lg">
                     <div class="card-header bg-dark text-white text-center">
                         <h5>Vinayaka High School</h5>
-                        <small>Fee Portal Login</small>
+                        <small>Billing Management Login</small>
                     </div>
                     <div class="card-body">
                         <form action="/login" method="POST">
@@ -34,57 +35,156 @@
             </div>
         </div>
         {% else %}
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h4>Vinayaka High School - Fee Database</h4>
-                <div>
-                    <span class="badge bg-light text-dark me-2">{{ username }} ({{ role.upper() }})</span>
-                    <a href="/logout" class="btn btn-danger btn-sm">Sign Out</a>
+        
+        <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white border rounded shadow-sm">
+            <h4 class="mb-0 text-primary fw-bold">🏫 Vinayaka High School Management Portal</h4>
+            <div>
+                <span class="badge bg-secondary me-2">Logged in: {{ username }}</span>
+                <a href="/logout" class="btn btn-danger btn-sm">Sign Out</a>
+            </div>
+        </div>
+
+        <div class="card shadow mb-4">
+            <div class="card-header bg-dark text-white"><h5>➕ Generate New Record</h5></div>
+            <div class="card-body">
+                <form action="/add_student" method="POST" class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Student Full Name</label>
+                        <input type="text" name="student_name" class="form-control" placeholder="Rajesh Kumar" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Class / Grade Tab</label>
+                        <input type="text" name="student_class" class="form-control" placeholder="Grade 5" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Receipt/Category Type</label>
+                        <select name="category" class="form-select" required>
+                            <option value="Fees">School Tuition Fees</option>
+                            <option value="Books">Textbooks & Stationeries</option>
+                            <option value="Uniform">Uniforms & Merchandise</option>
+                        </select>
+                    </div>
+
+                    <div class="col-12 bg-light p-3 border rounded">
+                        <span class="badge bg-secondary mb-2">Itemized Breakdown Entry Rules</span>
+                        <p class="text-muted small mb-2">Separate multiple entries with a <strong>comma ( , )</strong>.</p>
+                        <div class="row g-3">
+                            <div class="col-md-5">
+                                <label class="form-label small fw-bold">Particulars List</label>
+                                <input type="text" name="particulars" class="form-control form-control-sm" placeholder="Text Book, Single line 200P, Socks" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Quantities List</label>
+                                <input type="text" name="quantities" class="form-control form-control-sm" placeholder="14, 2, 2" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold">Individual Amounts List (₹)</label>
+                                <input type="text" name="amounts" class="form-control form-control-sm" placeholder="1691, 1020, 200" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 text-end">
+                        <button type="submit" class="btn btn-success px-5 fw-bold">Save Entry Matrix</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <ul class="nav nav-pills nav-fill gap-2 p-1 small bg-white border rounded shadow-sm mb-4" id="dashboardTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active fw-bold py-3 text-uppercase" id="fees-tab" data-bs-toggle="tab" data-bs-target="#fees-panel" type="button" role="tab">🏫 Tuition Fee Dashboard</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link fw-bold py-3 text-uppercase list-group-item-success" id="books-tab" data-bs-toggle="tab" data-bs-target="#books-panel" type="button" role="tab">📚 Book Receipts Dashboard</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link fw-bold py-3 text-uppercase list-group-item-warning" id="uniform-tab" data-bs-toggle="tab" data-bs-target="#uniform-panel" type="button" role="tab">👕 Uniform Receipts Dashboard</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="dashboardTabsContent">
+            
+            <div class="tab-pane fade show active" id="fees-panel" role="tabpanel">
+                <div class="card shadow border-primary">
+                    <div class="card-header bg-primary text-white"><strong>Tuition Fee Registry Log</strong></div>
+                    <div class="card-body p-0">
+                        <table class="table table-hover table-striped mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>ID</th><th>Student Name</th><th>Class</th><th>Grand Total Cost</th><th>Status</th><th>Action</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for record in records if record.category == 'Fees' %}
+                                    <tr>
+                                        <td>{{ record.id }}</td>
+                                        <td><strong>{{ record.name }}</strong></td>
+                                        <td><span class="badge bg-info text-dark">{{ record.class }}</span></td>
+                                        <td><strong class="text-primary">₹ {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
+                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">🔒 Locked</span>{% else %}<span class="text-warning fw-bold">⏱️ Pending</span>{% endif %}</td>
+                                        <td><a href="/generate_invoice/{{ record.class }}/{{ record.id }}" class="btn btn-sm btn-dark">{% if record.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a></td>
+                                    </tr>
+                                {% else %}
+                                    <tr><td colspan="6" class="text-center text-muted p-4">No tuition fee records found.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-            <div class="card-body">
-                <table class="table table-hover table-bordered">
-                    <thead class="table-secondary">
-                        <tr>
-                            <th>Record ID</th>
-                            <th>Student Name</th>
-                            <th>Class Sheet</th>
-                            <th>Fee Amount</th>
-                            <th>Current Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for record in records %}
-                        <tr>
-                            <td>{{ record.id }}</td>
-                            <td><strong>{{ record.name }}</strong></td>
-                            <td><span class="badge bg-info text-dark">{{ record.class }}</span></td>
-                            <td>
-                                <form action="/update_fee/{{ record.class }}/{{ record.id }}" method="POST" class="d-flex gap-2">
-                                    <input type="number" step="0.01" name="fee_amount" value="{{ record.amount }}" class="form-control form-control-sm" style="width:130px;" {% if record.is_locked == 1 %} disabled {% endif %}>
-                                    {% if record.is_locked == 0 %}
-                                    <button type="submit" class="btn btn-sm btn-success">Save</button>
-                                    {% endif %}
-                                </form>
-                            </td>
-                            <td>
-                                {% if record.is_locked == 1 %}
-                                <span class="text-danger fw-bold">🔒 Locked ({{ record.status }})</span>
+
+            <div class="tab-pane fade" id="books-panel" role="tabpanel">
+                <div class="card shadow border-success">
+                    <div class="card-header bg-success text-white"><strong>Book Store Inventory Issue Log</strong></div>
+                    <div class="card-body p-0">
+                        <table class="table table-hover table-striped mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>ID</th><th>Student Name</th><th>Class</th><th>Grand Total Cost</th><th>Status</th><th>Action</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for record in records if record.category == 'Books' %}
+                                    <tr>
+                                        <td>{{ record.id }}</td>
+                                        <td><strong>{{ record.name }}</strong></td>
+                                        <td><span class="badge bg-info text-dark">{{ record.class }}</span></td>
+                                        <td><strong class="text-success">₹ {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
+                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">🔒 Locked</span>{% else %}<span class="text-warning fw-bold">⏱️ Pending</span>{% endif %}</td>
+                                        <td><a href="/generate_invoice/{{ record.class }}/{{ record.id }}" class="btn btn-sm btn-dark">{% if record.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a></td>
+                                    </tr>
                                 {% else %}
-                                <span class="text-warning fw-bold">⏱️ {{ record.status }}</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <a href="/generate_invoice/{{ record.class }}/{{ record.id }}" class="btn btn-sm btn-primary">
-                                    {% if record.is_locked == 1 %} Review Invoice {% else %} Generate & Lock {% endif %}
-                                </a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                                    <tr><td colspan="6" class="text-center text-muted p-4">No book receipt records found.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
+
+            <div class="tab-pane fade" id="uniform-panel" role="tabpanel">
+                <div class="card shadow border-warning">
+                    <div class="card-header bg-warning text-dark"><strong>Uniform Department Issue Log</strong></div>
+                    <div class="card-body p-0">
+                        <table class="table table-hover table-striped mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>ID</th><th>Student Name</th><th>Class</th><th>Grand Total Cost</th><th>Status</th><th>Action</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for record in records if record.category == 'Uniform' %}
+                                    <tr>
+                                        <td>{{ record.id }}</td>
+                                        <td><strong>{{ record.name }}</strong></td>
+                                        <td><span class="badge bg-info text-dark">{{ record.class }}</span></td>
+                                        <td><strong class="text-warning text-dark">₹ {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
+                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">🔒 Locked</span>{% else %}<span class="text-warning fw-bold">⏱️ Pending</span>{% endif %}</td>
+                                        <td><a href="/generate_invoice/{{ record.class }}/{{ record.id }}" class="btn btn-sm btn-dark">{% if record.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a></td>
+                                    </tr>
+                                {% else %}
+                                    <tr><td colspan="6" class="text-center text-muted p-4">No uniform receipt records found.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
         </div>
         {% endif %}
     </div>
