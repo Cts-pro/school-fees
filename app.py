@@ -1,199 +1,172 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Vinayaka High School - Fee Portal</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</head>
-<body class="bg-light">
-    <div class="container mt-5 mb-5">
-        {% with messages = get_flashed_messages() %}
-          {% if messages %}
-            {% for message in messages %}
-              <div class="alert alert-info alert-dismissible fade show">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
+import os
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 
-        {% if login_page %}
-        <div class="row justify-content-center">
-            <div class="col-md-4 mt-5">
-                <div class="card shadow-lg">
-                    <div class="card-header bg-dark text-white text-center">
-                        <h5>Vinayaka High School</h5>
-                        <small>Billing Management Login</small>
-                    </div>
-                    <div class="card-body">
-                        <form action="/login" method="POST">
-                            <div class="mb-3"><label class="form-label">Username</label><input type="text" name="username" class="form-control" required placeholder="staff or admin"></div>
-                            <div class="mb-3"><label class="form-label">Password</label><input type="password" name="password" class="form-control" required></div>
-                            <button type="submit" class="btn btn-dark w-100">Log In</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% else %}
+app = Flask(__name__)
+app.secret_key = 'super_secret_permanent_key_123'
+EXCEL_FILE = 'school_fees_by_class.xlsx'
+
+font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+font_body = Font(name="Calibri", size=11)
+font_locked = Font(name="Calibri", size=11, italic=True, color="595959")
+fill_header = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+fill_locked = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+fill_pending = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+
+def init_excel():
+    if not os.path.exists(EXCEL_FILE):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Grade 5"
+        ws.views.sheetView[0].showGridLines = True
+        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked"]
+        ws.append(headers)
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col)
+            cell.font = font_header
+            cell.fill = fill_header
+            cell.alignment = Alignment(horizontal="center")
+        wb.save(EXCEL_FILE)
+
+def get_all_records_from_excel():
+    if not os.path.exists(EXCEL_FILE):
+        init_excel()
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    all_records = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value is None:
+                continue
+            all_records.append({
+                "id": ws.cell(row=row, column=1).value,
+                "name": ws.cell(row=row, column=2).value,
+                "category": str(ws.cell(row=row, column=3).value or "Fees").strip(),
+                "particulars": ws.cell(row=row, column=4).value or "",
+                "quantities": ws.cell(row=row, column=5).value or "",
+                "amounts": ws.cell(row=row, column=6).value or "",
+                "total_amount": float(ws.cell(row=row, column=7).value or 0.0),
+                "class": sheet_name,
+                "status": ws.cell(row=row, column=8).value,
+                "is_locked": int(ws.cell(row=row, column=9).value or 0)
+            })
+    return all_records
+
+@app.route('/')
+def index():
+    if 'user_role' not in session:
+        return redirect(url_for('login'))
+    records = get_all_records_from_excel()
+    return render_template('index.html', records=records, role=session.get('user_role'), username=session.get('username'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        if username == 'admin' and password == 'admin123':
+            session['user_role'] = 'admin'
+            session['username'] = 'Admin'
+            return redirect(url_for('index'))
+        elif username == 'staff' and password == 'staff123':
+            session['user_role'] = 'user'
+            session['username'] = 'Bursar Staff'
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid login credentials.')
+    return render_template('index.html', login_page=True)
+
+@app.route('/add_student', methods=['POST'])
+def add_student():
+    if 'user_role' not in session:
+        return redirect(url_for('login'))
         
-        <!-- TOP APP BAR -->
-        <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white border rounded shadow-sm">
-            <h4 class="mb-0 text-primary fw-bold">Vinayaka High School Management Portal</h4>
-            <div class="d-flex align-items-center gap-2">
-                {% if role == 'admin' %}
-                    <a href="/download_database" class="btn btn-success btn-sm fw-bold">Download Backup Excel (Admin Only)</a>
-                {% endif %}
-                <span class="badge bg-secondary">Role: {{ role.upper() }}</span>
-                <a href="/logout" class="btn btn-danger btn-sm">Sign Out</a>
-            </div>
-        </div>
+    student_name = request.form['student_name']
+    student_class = request.form['student_class'].strip()
+    category = request.form['category'].strip()
+    particulars = request.form['particulars']
+    quantities = request.form['quantities']
+    amounts_str = request.form['amounts']
+    
+    try:
+        amounts_list = [float(x.strip()) for x in amounts_str.split(',')]
+        total_amount = sum(amounts_list)
+    except ValueError:
+        flash("Formatting Error: Ensure individual amounts are comma-separated numbers.")
+        return redirect(url_for('index'))
+        
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    if student_class not in wb.sheetnames:
+        ws = wb.create_sheet(title=student_class)
+        ws.views.sheetView[0].showGridLines = True
+        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked"]
+        ws.append(headers)
+        for col, h in enumerate(headers, 1):
+            ws.cell(row=1, column=col).font = font_header
+            ws.cell(row=1, column=col).fill = fill_header
+    else:
+        ws = wb[student_class]
+        
+    all_records = get_all_records_from_excel()
+    next_id = len(all_records) + 1
+    
+    ws.append([next_id, student_name, category, particulars, quantities, amounts_str, total_amount, "Pending", 0])
+    
+    new_row_idx = ws.max_row
+    for col in range(1, 10):
+        cell = ws.cell(row=new_row_idx, column=col)
+        cell.fill = fill_pending
+        cell.font = font_body
+        if col == 7:
+            cell.number_format = 'R#,##0.00'
+            
+    wb.save(EXCEL_FILE)
+    flash(f"Record created successfully for {student_name} under {category}!")
+    return redirect(url_for('index'))
 
-        <!-- NEW ENTRY FORM CONTAINER -->
-        <div class="card shadow mb-4">
-            <div class="card-header bg-dark text-white"><h5>Add New Billing Record</h5></div>
-            <div class="card-body">
-                <form action="/add_student" method="POST" class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">Student Full Name</label>
-                        <input type="text" name="student_name" class="form-control" placeholder="Rajesh Kumar" required>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">Class / Grade Tab</label>
-                        <input type="text" name="student_class" class="form-control" placeholder="Grade 5" required>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">Receipt/Category Type</label>
-                        <select name="category" class="form-select" required>
-                            <option value="Fees">School Tuition Fees</option>
-                            <option value="Books">Textbooks & Stationeries</option>
-                            <option value="Uniform">Uniforms & Merchandise</option>
-                        </select>
-                    </div>
+@app.route('/download_database')
+def download_database():
+    if 'user_role' not in session:
+        return redirect(url_for('login'))
+    if os.path.exists(EXCEL_FILE):
+        return send_file(EXCEL_FILE, as_attachment=True, download_name="vinayaka_school_database.xlsx")
+    else:
+        flash("Data registry document is not generated yet.")
+        return redirect(url_for('index'))
 
-                    <div class="col-12 bg-light p-3 border rounded">
-                        <span class="badge bg-secondary mb-2">Itemized Breakdown Entry Rules</span>
-                        <p class="text-muted small mb-2">Separate multiple entries with a <strong>comma ( , )</strong>.</p>
-                        <div class="row g-3">
-                            <div class="col-md-5">
-                                <label class="form-label small fw-bold">Particulars List</label>
-                                <input type="text" name="particulars" class="form-control form-control-sm" placeholder="Text Book, Socks" required>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small fw-bold">Quantities List</label>
-                                <input type="text" name="quantities" class="form-control form-control-sm" placeholder="14, 2" required>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small fw-bold">Individual Amounts List (Rs)</label>
-                                <input type="text" name="amounts" class="form-control form-control-sm" placeholder="1691, 200" required>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-12 text-end">
-                        <button type="submit" class="btn btn-success px-5 fw-bold">Save Entry Matrix</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+@app.route('/generate_invoice/<sheet_name>/<int:row_id>')
+def generate_invoice(sheet_name, row_id):
+    if 'user_role' not in session:
+        return redirect(url_for('login'))
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    record_data = {}
+    if sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == row_id:
+                ws.cell(row=row, column=8).value = "Invoiced"
+                ws.cell(row=row, column=9).value = 1
+                for col in range(1, 10):
+                    ws.cell(row=row, column=col).fill = fill_locked
+                    ws.cell(row=row, column=col).font = font_locked
+                
+                record_data = {
+                    "id": row_id,
+                    "name": ws.cell(row=row, column=2).value,
+                    "category": str(ws.cell(row=row, column=3).value or "Fees").strip(),
+                    "particulars": str(ws.cell(row=row, column=4).value).split(','),
+                    "quantities": str(ws.cell(row=row, column=5).value).split(','),
+                    "amounts": str(ws.cell(row=row, column=6).value).split(','),
+                    "total": float(ws.cell(row=row, column=7).value or 0.0),
+                    "class": sheet_name
+                }
+                wb.save(EXCEL_FILE)
+                break
 
-        <!-- DASHBOARD TABS -->
-        <ul class="nav nav-pills nav-fill gap-2 p-1 small bg-white border rounded shadow-sm mb-4" id="dashboardTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active fw-bold py-3 text-uppercase" id="fees-tab" data-bs-toggle="tab" data-bs-target="#fees-panel" type="button" role="tab">Tuition Fee Dashboard</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link fw-bold py-3 text-uppercase list-group-item-success" id="books-tab" data-bs-toggle="tab" data-bs-target="#books-panel" type="button" role="tab">Book Receipts Dashboard</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link fw-bold py-3 text-uppercase list-group-item-warning" id="uniform-tab" data-bs-toggle="tab" data-bs-target="#uniform-panel" type="button" role="tab">Uniform Receipts Dashboard</button>
-            </li>
-        </ul>
-
-        <div class="tab-content" id="dashboardTabsContent">
-            <!-- 1. TUITION FEES PANEL -->
-            <div class="tab-pane fade show active" id="fees-panel" role="tabpanel">
-                <div class="card shadow border-primary">
-                    <div class="card-header bg-primary text-white"><strong>Tuition Fee Registry Log</strong></div>
-                    <div class="card-body p-0">
-                        <table class="table table-hover table-striped mb-0 align-middle">
-                            <thead class="table-light">
-                                <tr><th>ID</th><th>Student Name</th><th>Class</th><th>Grand Total Cost</th><th>Status</th><th>Action</th></tr>
-                            </thead>
-                            <tbody>
-                                {% for record in records if record.category == 'Fees' %}
-                                    <tr>
-                                        <td>{{ record.id }}</td>
-                                        <td><strong>{{ record.name }}</strong></td>
-                                        <td><span class="badge bg-info text-dark">{{ record.class }}</span></td>
-                                        <td><strong class="text-primary">Rs {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
-                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">Locked</span>{% else %}<span class="text-warning fw-bold">Pending</span>{% endif %}</td>
-                                        <td><a href="/generate_invoice/{{ record.class }}/{{ record.id }}" class="btn btn-sm btn-dark">{% if record.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a></td>
-                                    </tr>
-                                {% else %}
-                                    <tr><td colspan="6" class="text-center text-muted p-4">No tuition fee records found.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 2. BOOK RECEIPTS PANEL -->
-            <div class="tab-pane fade" id="books-panel" role="tabpanel">
-                <div class="card shadow border-success">
-                    <div class="card-header bg-success text-white"><strong>Book Store Inventory Issue Log</strong></div>
-                    <div class="card-body p-0">
-                        <table class="table table-hover table-striped mb-0 align-middle">
-                            <thead class="table-light">
-                                <tr><th>ID</th><th>Student Name</th><th>Class</th><th>Grand Total Cost</th><th>Status</th><th>Action</th></tr>
-                            </thead>
-                            <tbody>
-                                {% for record in records if record.category == 'Books' %}
-                                    <tr>
-                                        <td>{{ record.id }}</td>
-                                        <td><strong>{{ record.name }}</strong></td>
-                                        <td><span class="badge bg-info text-dark">{{ record.class }}</span></td>
-                                        <td><strong class="text-success">Rs {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
-                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">Locked</span>{% else %}<span class="text-warning fw-bold">Pending</span>{% endif %}</td>
-                                        <td><a href="/generate_invoice/{{ record.class }}/{{ record.id }}" class="btn btn-sm btn-dark">{% if record.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a></td>
-                                    </tr>
-                                {% else %}
-                                    <tr><td colspan="6" class="text-center text-muted p-4">No book receipt records found.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 3. UNIFORM RECEIPTS PANEL -->
-            <div class="tab-pane fade" id="uniform-panel" role="tabpanel">
-                <div class="card shadow border-warning">
-                    <div class="card-header bg-warning text-dark"><strong>Uniform Department Issue Log</strong></div>
-                    <div class="card-body p-0">
-                        <table class="table table-hover table-striped mb-0 align-middle">
-                            <thead class="table-light">
-                                <tr><th>ID</th><th>Student Name</th><th>Class</th><th>Grand Total Cost</th><th>Status</th><th>Action</th></tr>
-                            </thead>
-                            <tbody>
-                                {% for record in records if record.category == 'Uniform' %}
-                                    <tr>
-                                        <td>{{ record.id }}</td>
-                                        <td><strong>{{ record.name }}</strong></td>
-                                        <td><span class="badge bg-info text-dark">{{ record.class }}</span></td>
-                                        <td><strong class="text-warning text-dark">Rs {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
-                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">Locked</span>{% else %}<span class="text-warning fw-bold">Pending</span>{% endif %}</td>
-                                        <td><a href="/generate_invoice/{{ record.class }}/{{ record.id }}" class="btn btn-sm btn-dark">{% if record.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a></td>
-                                    </tr>
-                                {% else %}
-                                    <tr><td colspan="6" class="text-center text-muted p-4">No uniform receipt records found.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-</body>
-</html>
+    table_rows_html = ""
+    for i in range(len(record_data['particulars'])):
+        part = record_data['particulars'][i].strip()
+        qty = record_data['quantities'][i].strip() if i < len(record_data['quantities']) else "1"
+        amt = record_data['amounts'][i].strip() if i < len(record_data['amounts']) else "0.00"
+        table_rows_html += f"<tr><td class='text-center'>{i+1}</td><td>{part}</td>
