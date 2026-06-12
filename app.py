@@ -38,20 +38,19 @@
         
         <!-- TOP APP BAR -->
         <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white border rounded shadow-sm">
-            <h4 class="mb-0 text-primary fw-bold">🏫 Vinayaka High School Management Portal</h4>
+            <h4 class="mb-0 text-primary fw-bold">Vinayaka High School Management Portal</h4>
             <div class="d-flex align-items-center gap-2">
-                <!-- 🔒 ROLE SEPARATION: ONLY ADMIN CAN SEE THE DOWNLOAD BACKUP BUTTON -->
                 {% if role == 'admin' %}
-                    <a href="/download_database" class="btn btn-success btn-sm fw-bold">📥 Download Backup Excel (Admin Only)</a>
+                    <a href="/download_database" class="btn btn-success btn-sm fw-bold">Download Backup Excel (Admin Only)</a>
                 {% endif %}
                 <span class="badge bg-secondary">Role: {{ role.upper() }}</span>
                 <a href="/logout" class="btn btn-danger btn-sm">Sign Out</a>
             </div>
         </div>
 
-        <!-- NEW ENTRY FORM CONTAINER (AVAILABLE TO BOTH AS PER REQUEST) -->
+        <!-- NEW ENTRY FORM CONTAINER -->
         <div class="card shadow mb-4">
-            <div class="card-header bg-dark text-white"><h5>➕ Generate New Record</h5></div>
+            <div class="card-header bg-dark text-white"><h5>Add New Billing Record</h5></div>
             <div class="card-body">
                 <form action="/add_student" method="POST" class="row g-3">
                     <div class="col-md-4">
@@ -84,7 +83,7 @@
                                 <input type="text" name="quantities" class="form-control form-control-sm" placeholder="14, 2" required>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small fw-bold">Individual Amounts List (₹)</label>
+                                <label class="form-label small fw-bold">Individual Amounts List (Rs)</label>
                                 <input type="text" name="amounts" class="form-control form-control-sm" placeholder="1691, 200" required>
                             </div>
                         </div>
@@ -99,13 +98,13 @@
         <!-- DASHBOARD TABS -->
         <ul class="nav nav-pills nav-fill gap-2 p-1 small bg-white border rounded shadow-sm mb-4" id="dashboardTabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active fw-bold py-3 text-uppercase" id="fees-tab" data-bs-toggle="tab" data-bs-target="#fees-panel" type="button" role="tab">🏫 Tuition Fee Dashboard</button>
+                <button class="nav-link active fw-bold py-3 text-uppercase" id="fees-tab" data-bs-toggle="tab" data-bs-target="#fees-panel" type="button" role="tab">Tuition Fee Dashboard</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link fw-bold py-3 text-uppercase list-group-item-success" id="books-tab" data-bs-toggle="tab" data-bs-target="#books-panel" type="button" role="tab">📚 Book Receipts Dashboard</button>
+                <button class="nav-link fw-bold py-3 text-uppercase list-group-item-success" id="books-tab" data-bs-toggle="tab" data-bs-target="#books-panel" type="button" role="tab">Book Receipts Dashboard</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link fw-bold py-3 text-uppercase list-group-item-warning" id="uniform-tab" data-bs-toggle="tab" data-bs-target="#uniform-panel" type="button" role="tab">👕 Uniform Receipts Dashboard</button>
+                <button class="nav-link fw-bold py-3 text-uppercase list-group-item-warning" id="uniform-tab" data-bs-toggle="tab" data-bs-target="#uniform-panel" type="button" role="tab">Uniform Receipts Dashboard</button>
             </li>
         </ul>
 
@@ -125,8 +124,8 @@
                                         <td>{{ record.id }}</td>
                                         <td><strong>{{ record.name }}</strong></td>
                                         <td><span class="badge bg-info text-dark">{{ record.class }}</span></td>
-                                        <td><strong class="text-primary">₹ {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
-                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">🔒 Locked</span>{% else %}<span class="text-warning fw-bold">⏱️ Pending</span>{% endif %}</td>
+                                        <td><strong class="text-primary">Rs {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
+                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">Locked</span>{% else %}<span class="text-warning fw-bold">Pending</span>{% endif %}</td>
                                         <td><a href="/generate_invoice/{{ record.class }}/{{ record.id }}" class="btn btn-sm btn-dark">{% if record.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a></td>
                                     </tr>
                                 {% else %}
@@ -153,8 +152,8 @@
                                         <td>{{ record.id }}</td>
                                         <td><strong>{{ record.name }}</strong></td>
                                         <td><span class="badge bg-info text-dark">{{ record.class }}</span></td>
-                                        <td><strong class="text-success">₹ {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
-                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">🔒 Locked</span>{% else %}<span class="text-warning fw-bold">⏱️ Pending</span>{% endif %}</td>
+                                        <td><strong class="text-success">Rs {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
+                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">Locked</span>{% else %}<span class="text-warning fw-bold">Pending</span>{% endif %}</td>
                                         <td><a href="/generate_invoice/{{ record.class }}/{{ record.id }}" class="btn btn-sm btn-dark">{% if record.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a></td>
                                     </tr>
                                 {% else %}
@@ -181,8 +180,8 @@
                                         <td>{{ record.id }}</td>
                                         <td><strong>{{ record.name }}</strong></td>
                                         <td><span class="badge bg-info text-dark">{{ record.class }}</span></td>
-                                        <td><strong class="text-warning text-dark">₹ {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
-                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">🔒 Locked</span>{% else %}<span class="text-warning fw-bold">⏱️ Pending</span>{% endif %}</td>
+                                        <td><strong class="text-warning text-dark">Rs {{ "{:,.2f}".format(record.total_amount) }}</strong></td>
+                                        <td>{% if record.is_locked == 1 %}<span class="text-danger fw-bold">Locked</span>{% else %}<span class="text-warning fw-bold">Pending</span>{% endif %}</td>
                                         <td><a href="/generate_invoice/{{ record.class }}/{{ record.id }}" class="btn btn-sm btn-dark">{% if record.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a></td>
                                     </tr>
                                 {% else %}
