@@ -120,7 +120,6 @@
                             <td>
                                 <div class="d-flex gap-1">
                                     <a href="/generate_invoice/{{ r.class }}/{{ r.id }}" class="btn btn-sm btn-dark">{% if r.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a>
-                                    
                                     {% if r.is_locked == 0 or role == 'admin' %}
                                         <button class="btn btn-sm btn-outline-secondary" onclick="loadEditModal({{ r|tojson }})">Edit</button>
                                     {% endif %}
@@ -218,6 +217,8 @@
 
     <script>
         let isSidebarOpen = false;
+        
+        // HERE IS THE MISSING bookOptions MATRIX ARRAY DEFINED
         const bookOptions = ["Text Book", "Single line 100P", "Single line 200P", "Horizontal page", "Three line", "Two line", "Drawing box", "Geometry Box", "Uniform Set", "School Fee Allocation"];
 
         function toggleNav() {
