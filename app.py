@@ -5,7 +5,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_permanent_key_123'
-EXCEL_FILE = '/data/school_fees_by_class.xlsx'
+EXCEL_FILE = '/data/school_billing_system_v3.xlsx'
 
 font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
 font_body = Font(name="Calibri", size=11)
@@ -102,7 +102,6 @@ def add_student():
     student_class = request.form['student_class'].strip()
     category = request.form['category'].strip()
     
-    # Smart conversion: Read hidden form field data built by your table script
     particulars = request.form.get('particulars', '')
     quantities = request.form.get('quantities', '')
     amounts_str = request.form.get('amounts', '')
@@ -303,6 +302,7 @@ def generate_invoice(sheet_name, row_id):
             .trust-title {{ font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #333; }}
             .table-invoice th, .table-invoice td {{ border: 1px solid #000 !important; font-size: 14px; padding: 6px; }}
             .table-invoice th {{ background-color: #f2f2f2 !important; }}
+            .d-print-none button, .d-print-none a {{ width: 100% !important; }}
         </style>
     </head>
     <body>
