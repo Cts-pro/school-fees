@@ -6,7 +6,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 app = Flask(__name__)
 app.secret_key = 'super_secret_permanent_key_123'
 # FREE TIER FIX: Changed path from /data/ to local application directory folder
-EXCEL_FILE = 'school_billing_system_free.xlsx'
+EXCEL_FILE = 'vhs_billing_final_system.xlsx'
 
 font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
 font_body = Font(name="Calibri", size=11)
