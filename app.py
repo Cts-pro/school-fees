@@ -42,19 +42,22 @@ def get_all_records_from_excel():
         for row in range(2, ws.max_row + 1):
             if ws.cell(row=row, column=1).value is None:
                 continue
-            all_records.append({
-                "id": int(ws.cell(row=row, column=1).value),
-                "name": ws.cell(row=row, column=2).value,
-                "category": str(ws.cell(row=row, column=3).value or "Fees").strip(),
-                "particulars": str(ws.cell(row=row, column=4).value or ""),
-                "quantities": str(ws.cell(row=row, column=5).value or ""),
-                "amounts": str(ws.cell(row=row, column=6).value or ""),
-                "total_amount": float(ws.cell(row=row, column=7).value or 0.0),
-                "class": sheet_name,
-                "status": ws.cell(row=row, column=8).value,
-                "is_locked": int(ws.cell(row=row, column=9).value or 0),
-                "invoice_num": str(ws.cell(row=row, column=10).value or "DRAFT-UNASSIGNED")
-            })
+            try:
+                all_records.append({
+                    "id": int(ws.cell(row=row, column=1).value),
+                    "name": ws.cell(row=row, column=2).value,
+                    "category": str(ws.cell(row=row, column=3).value or "Fees").strip(),
+                    "particulars": str(ws.cell(row=row, column=4).value or ""),
+                    "quantities": str(ws.cell(row=row, column=5).value or ""),
+                    "amounts": str(ws.cell(row=row, column=6).value or ""),
+                    "total_amount": float(ws.cell(row=row, column=7).value or 0.0),
+                    "class": sheet_name,
+                    "status": ws.cell(row=row, column=8).value,
+                    "is_locked": int(ws.cell(row=row, column=9).value or 0),
+                    "invoice_num": str(ws.cell(row=row, column=10).value or "DRAFT-UNASSIGNED")
+                })
+            except Exception:
+                continue
     return all_records
 
 def get_next_invoice_number_for_category(category):
@@ -98,16 +101,23 @@ def add_student():
     student_name = request.form['student_name']
     student_class = request.form['student_class'].strip()
     category = request.form['category'].strip()
-    particulars = request.form['particulars']
-    quantities = request.form['quantities']
-    amounts_str = request.form['amounts']
+    particulars = request.form.get('particulars', '')
+    quantities = request.form.get('quantities', '')
+    amounts_str = request.form.get('amounts', '')
+    
+    # Secure fallbacks for blank inputs
+    if not particulars.strip():
+        particulars = "Default Item"
+    if not quantities.strip():
+        quantities = "1"
+    if not amounts_str.strip():
+        amounts_str = "0.00"
     
     try:
-        amounts_list = [float(x.strip()) for x in amounts_str.split(',')]
+        amounts_list = [float(x.strip() if x.strip() else 0) for x in amounts_str.split(',')]
         total_amount = sum(amounts_list)
     except ValueError:
-        flash("Formatting Error: Pricing computation aborted.")
-        return redirect(url_for('index'))
+        total_amount = 0.0
         
     wb = openpyxl.load_workbook(EXCEL_FILE)
     if student_class not in wb.sheetnames:
@@ -135,7 +145,7 @@ def add_student():
             cell.number_format = 'Rs#,##0.00'
             
     wb.save(EXCEL_FILE)
-    flash(f"Draft saved successfully for {student_name}!")
+    flash(f"Draft matrix saved successfully for {student_name}!")
     return redirect(url_for('index'))
 
 @app.route('/edit_student', methods=['POST'])
@@ -144,4 +154,96 @@ def edit_student():
         return redirect(url_for('login'))
         
     row_id = int(request.form['record_id'])
-    sheet_class = request.form
+    sheet_class = request.form['sheet_class']
+    updated_name = request.form['edit_name']
+    updated_class = request.form['edit_class'].strip()
+    
+    particulars_list = request.form.getlist('edit_particulars')
+    quantities_list = request.form.getlist('edit_quantities')
+    amounts_list = request.form.getlist('edit_amounts')
+    
+    parts_str = ",".join(particulars_list)
+    qtys_str = ",".join(quantities_list)
+    ams_str = ",".join(amounts_list)
+    
+    try:
+        total_amount = sum([float(x if str(x).strip() else 0) for x in amounts_list])
+    except ValueError:
+        flash("Numeric formatting handling failed.")
+        return redirect(url_for('index'))
+        
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    if sheet_class in wb.sheetnames:
+        ws = wb[sheet_class]
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == row_id:
+                if ws.cell(row=row, column=9).value == 1 and session.get('user_role') != 'admin':
+                    flash("Action Blocked: Row is finalized.")
+                    return redirect(url_for('index'))
+                
+                ws.cell(row=row, column=2).value = updated_name
+                ws.cell(row=row, column=4).value = parts_str
+                ws.cell(row=row, column=5).value = qtys_str
+                ws.cell(row=row, column=6).value = ams_str
+                ws.cell(row=row, column=7).value = total_amount
+                
+                current_lock = ws.cell(row=row, column=9).value
+                inv_num = ws.cell(row=row, column=10).value
+                category = ws.cell(row=row, column=3).value
+                status = ws.cell(row=row, column=8).value
+                
+                if updated_class != sheet_class:
+                    ws.delete_rows(row, 1)
+                    if updated_class not in wb.sheetnames:
+                        new_ws = wb.create_sheet(title=updated_class)
+                        new_ws.views.sheetView[0].showGridLines = True
+                        headers = ["Record ID", "Student Name", "Category", "Particulars List", "Quantities List", "Amounts List", "Total Amount", "Status", "Is Locked", "Invoice Number"]
+                        new_ws.append(headers)
+                    else:
+                        new_ws = wb[updated_class]
+                        
+                    new_ws.append([row_id, updated_name, category, parts_str, qtys_str, ams_str, total_amount, status, current_lock, inv_num])
+                    target_row = new_ws.max_row
+                    for c in range(1, 11):
+                        cell = new_ws.cell(row=target_row, column=c)
+                        cell.fill = fill_locked if current_lock == 1 else fill_pending
+                        cell.font = font_locked if current_lock == 1 else font_body
+                else:
+                    for c in range(1, 11):
+                        cell = ws.cell(row=row, column=c)
+                        cell.fill = fill_locked if current_lock == 1 else fill_pending
+                        cell.font = font_locked if current_lock == 1 else font_body
+                break
+                
+    wb.save(EXCEL_FILE)
+    flash("Changes committed to master matrix successfully.")
+    return redirect(url_for('index'))
+
+@app.route('/delete_student/<sheet_name>/<int:row_id>', methods=['POST'])
+def delete_student(sheet_name, row_id):
+    if session.get('user_role') != 'admin':
+        return redirect(url_for('login'))
+        
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    if sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == row_id:
+                ws.delete_rows(row, 1)
+                wb.save(EXCEL_FILE)
+                flash("Permanently removed record row.")
+                break
+    return redirect(url_for('index'))
+
+@app.route('/generate_invoice/<sheet_name>/<int:row_id>')
+def generate_invoice(sheet_name, row_id):
+    if 'user_role' not in session:
+        return redirect(url_for('login'))
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    record_data = {}
+    if sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == row_id:
+                category = str(ws.cell(row=row, column=3).value or "Fees").strip()
+                is_locked = int(ws
