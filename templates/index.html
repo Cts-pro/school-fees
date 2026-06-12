@@ -48,7 +48,7 @@
 
         {% if role == 'user' %}
         <div class="card shadow mb-4">
-            <div class="card-header bg-dark text-white"><h5>Create Billing Entry Matrix</h5></div>
+            <div class="card-header bg-dark text-white"><h5>Create New Billing Entry</h5></div>
             <div class="card-body">
                 <form action="/add_student" method="POST" id="billingForm">
                     <div class="row g-3 mb-4">
@@ -72,7 +72,7 @@
 
                     <div class="border rounded p-3 bg-white mb-4">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h6 class="fw-bold mb-0 text-secondary">Itemized Statement breakdown Ledger</h6>
+                            <h6 class="fw-bold mb-0 text-secondary">Itemized Statement Breakdown Ledger</h6>
                             <button type="button" class="btn btn-sm btn-outline-primary" onclick="addNewRow()">+ Add Item Row</button>
                         </div>
                         
@@ -86,8 +86,7 @@
                                     <th style="width: 70px;" class="text-center">Drop</th>
                                 </tr>
                             </thead>
-                            <tbody id="itemsTableBody">
-                                </tbody>
+                            <tbody id="itemsTableBody"></tbody>
                         </table>
                     </div>
 
@@ -101,6 +100,10 @@
                 </form>
             </div>
         </div>
+        {% else %}
+        <div class="alert alert-warning shadow-sm border mb-4">
+            <strong>Management Administrative Board Active:</strong> You have override clearance to **Edit** or **Delete** entries across all categories, including locked invoices.
+        </div>
         {% endif %}
 
         <div id="panel-fees" class="show-panel">
@@ -113,10 +116,20 @@
                             <td><strong>{{ r.name }}</strong></td>
                             <td><span class="badge bg-info text-dark">{{ r.class }}</span></td>
                             <td><strong class="text-primary">Rs {{ "{:,.2f}".format(r.total_amount) }}</strong></td>
-                            <td>{% if r.is_locked == 1 %}<span class="text-danger fw-bold">Permanent Ledger</span>{% else %}<span class="text-warning fw-bold">Pending Draft</span>{% endif %}</td>
+                            <td>{% if r.is_locked == 1 %}<span class="text-danger fw-bold">Locked Ledger</span>{% else %}<span class="text-warning fw-bold">Pending Draft</span>{% endif %}</td>
                             <td>
-                                <a href="/generate_invoice/{{ r.class }}/{{ r.id }}" class="btn btn-sm btn-dark">{% if r.is_locked == 1 %} Open Printed Bill {% else %} Lock & Print {% endif %}</a>
-                                {% if r.is_locked == 0 and role == 'user' %}<button class="btn btn-sm btn-outline-secondary ms-1" onclick="loadEditModal({{ r|tojson }})">Edit Details</button>{% endif %}
+                                <div class="d-flex gap-1">
+                                    <a href="/generate_invoice/{{ r.class }}/{{ r.id }}" class="btn btn-sm btn-dark">{% if r.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a>
+                                    
+                                    {% if r.is_locked == 0 or role == 'admin' %}
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="loadEditModal({{ r|tojson }})">Edit</button>
+                                    {% endif %}
+                                    {% if role == 'admin' %}
+                                        <form action="/delete_student/{{ r.class }}/{{ r.id }}" method="POST" onsubmit="return confirm('Drop records for {{ r.name }} permanently?');" class="m-0">
+                                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                        </form>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                     {% endfor %}
@@ -134,10 +147,19 @@
                             <td><strong>{{ r.name }}</strong></td>
                             <td><span class="badge bg-info text-dark">{{ r.class }}</span></td>
                             <td><strong class="text-success">Rs {{ "{:,.2f}".format(r.total_amount) }}</strong></td>
-                            <td>{% if r.is_locked == 1 %}<span class="text-danger fw-bold">Permanent Ledger</span>{% else %}<span class="text-warning fw-bold">Pending Draft</span>{% endif %}</td>
+                            <td>{% if r.is_locked == 1 %}<span class="text-danger fw-bold">Locked Ledger</span>{% else %}<span class="text-warning fw-bold">Pending Draft</span>{% endif %}</td>
                             <td>
-                                <a href="/generate_invoice/{{ r.class }}/{{ r.id }}" class="btn btn-sm btn-dark">{% if r.is_locked == 1 %} Open Printed Bill {% else %} Lock & Print {% endif %}</a>
-                                {% if r.is_locked == 0 and role == 'user' %}<button class="btn btn-sm btn-outline-secondary ms-1" onclick="loadEditModal({{ r|tojson }})">Edit Details</button>{% endif %}
+                                <div class="d-flex gap-1">
+                                    <a href="/generate_invoice/{{ r.class }}/{{ r.id }}" class="btn btn-sm btn-dark">{% if r.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a>
+                                    {% if r.is_locked == 0 or role == 'admin' %}
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="loadEditModal({{ r|tojson }})">Edit</button>
+                                    {% endif %}
+                                    {% if role == 'admin' %}
+                                        <form action="/delete_student/{{ r.class }}/{{ r.id }}" method="POST" onsubmit="return confirm('Drop records for {{ r.name }} permanently?');" class="m-0">
+                                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                        </form>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                     {% endfor %}
@@ -155,23 +177,31 @@
                             <td><strong>{{ r.name }}</strong></td>
                             <td><span class="badge bg-info text-dark">{{ r.class }}</span></td>
                             <td><strong class="text-warning text-dark">Rs {{ "{:,.2f}".format(r.total_amount) }}</strong></td>
-                            <td>{% if r.is_locked == 1 %}<span class="text-danger fw-bold">Permanent Ledger</span>{% else %}<span class="text-warning fw-bold">Pending Draft</span>{% endif %}</td>
+                            <td>{% if r.is_locked == 1 %}<span class="text-danger fw-bold">Locked Ledger</span>{% else %}<span class="text-warning fw-bold">Pending Draft</span>{% endif %}</td>
                             <td>
-                                <a href="/generate_invoice/{{ r.class }}/{{ r.id }}" class="btn btn-sm btn-dark">{% if r.is_locked == 1 %} Open Printed Bill {% else %} Lock & Print {% endif %}</a>
-                                {% if r.is_locked == 0 and role == 'user' %}<button class="btn btn-sm btn-outline-secondary ms-1" onclick="loadEditModal({{ r|tojson }})">Edit Details</button>{% endif %}
+                                <div class="d-flex gap-1">
+                                    <a href="/generate_invoice/{{ r.class }}/{{ r.id }}" class="btn btn-sm btn-dark">{% if r.is_locked == 1 %} Open Bill {% else %} Lock & Print {% endif %}</a>
+                                    {% if r.is_locked == 0 or role == 'admin' %}
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="loadEditModal({{ r|tojson }})">Edit</button>
+                                    {% endif %}
+                                    {% if role == 'admin' %}
+                                        <form action="/delete_student/{{ r.class }}/{{ r.id }}" method="POST" onsubmit="return confirm('Drop records for {{ r.name }} permanently?');" class="m-0">
+                                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                        </form>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                     {% endfor %}
                 </tbody></table></div>
             </div>
         </div>
-
     </div>
 
     <div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <form action="/edit_student" method="POST" class="modal-content">
-                <div class="modal-header bg-dark text-white"><h5>Edit Record Draft Parameters</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header bg-dark text-white"><h5>Modify Selected Record Parameter Array</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <input type="hidden" name="record_id" id="modalRecordId">
                     <input type="hidden" name="sheet_class" id="modalSheetClass">
@@ -202,9 +232,7 @@
             document.getElementById("panel-fees").className = "hidden-panel";
             document.getElementById("panel-books").className = "hidden-panel";
             document.getElementById("panel-uniform").className = "hidden-panel";
-            
             document.getElementById("panel-" + type).className = "show-panel";
-            
             const titles = { 'fees': 'Tuition Fee Dashboard', 'books': 'Book Receipts Dashboard', 'uniform': 'Uniform Receipts Dashboard' };
             document.getElementById("dashboardTitle").innerText = titles[type];
             toggleNav();
@@ -213,7 +241,6 @@
         function generateRowHtml(particularValue = "", qtyValue = 1, rateValue = 0) {
             const cat = document.getElementById("formCategory") ? document.getElementById("formCategory").value : "Fees";
             let partElement = "";
-            
             if (cat === "Books") {
                 partElement = `<select class="form-select form-select-sm particular-input">`;
                 bookOptions.forEach(opt => {
@@ -222,9 +249,8 @@
                 });
                 partElement += `</select>`;
             } else {
-                partElement = `<input type="text" class="form-control form-control-sm particular-input" value="${particularValue}" placeholder="e.g. Admission Term Allocation">`;
+                partElement = `<input type="text" class="form-control form-control-sm particular-input" value="${particularValue}" placeholder="e.g. Term Fees">`;
             }
-
             return `<tr>
                 <td>${partElement}</td>
                 <td><input type="number" class="form-control form-control-sm qty-input" value="${qtyValue}" min="1" oninput="calculateRowTotal(this)"></td>
@@ -244,14 +270,29 @@
             const tr = document.createElement('tr');
             tr.innerHTML = generateRowHtml();
             tbody.appendChild(tr);
-            tbody.lastChild.innerHTML = generateRowHtml();
         }
 
         function deleteRow(btn) {
             const row = btn.closest('tr');
-            const tbody = row.parentNode;
-            if (tbody.rows.length > 1) { row.remove(); }
+            if (row.parentNode.rows.length > 1) { row.remove(); }
         }
+
+        document.addEventListener("change", function(e) {
+            if (e.target && e.target.classList.contains("particular-input")) {
+                let row = e.target.closest("tr");
+                let qtyInput = row.querySelector(".qty-input");
+                let rateInput = row.querySelector(".rate-input");
+                let bookRates = {
+                    "Single line 100P": 32.00,
+                    "Single line 200P": 64.00,
+                    "Text Book": 120.00
+                };
+                if (bookRates[e.target.value]) {
+                    rateInput.value = bookRates[e.target.value];
+                    row.querySelector(".total-input").value = (parseFloat(qtyInput.value) * bookRates[e.target.value]).toFixed(2);
+                }
+            }
+        });
 
         function calculateRowTotal(input) {
             const row = input.closest('tr');
@@ -263,18 +304,12 @@
         function compileAndSubmit() {
             const rows = document.querySelectorAll("#itemsTableBody tr");
             let parts = [], qtys = [], ams = [];
-            
             rows.forEach(row => {
                 const pVal = row.querySelector('.particular-input').value.replace(/,/g, ' ');
                 const qVal = row.querySelector('.qty-input').value || "1";
                 const rVal = row.querySelector('.rate-input').value || "0";
-                const totalCalculated = (parseFloat(qVal) * parseFloat(rVal)).toFixed(2);
-                
-                parts.push(pVal);
-                qtys.push(qVal);
-                ams.push(totalCalculated);
+                parts.push(pVal); qtys.push(qVal); ams.push((parseFloat(qVal) * parseFloat(rVal)).toFixed(2));
             });
-
             document.getElementById("hiddenParticulars").value = parts.join(",");
             document.getElementById("hiddenQuantities").value = qtys.join(",");
             document.getElementById("hiddenAmounts").value = ams.join(",");
@@ -286,34 +321,26 @@
             document.getElementById("modalSheetClass").value = record.class;
             document.getElementById("modalName").value = record.name;
             document.getElementById("modalClass").value = record.class;
-            
             const container = document.getElementById("modalItemsContainer");
-            container.innerHTML = `<h6>Item Rows Matrix Mapping</h6>`;
-            
+            container.innerHTML = `<h6>Item Line Configurations</h6>`;
             const pArr = record.particulars.split(",");
             const qArr = record.quantities.split(",");
             const aArr = record.amounts.split(",");
-
             pArr.forEach((p, idx) => {
                 const q = qArr[idx] || "1";
-                const total = parseFloat(aArr[idx]) || 0;
-                const r = (total / parseFloat(q)).toFixed(2);
-
+                const total = aArr[idx] || "0";
                 container.innerHTML += `
                 <div class="row g-2 mb-2 align-items-center">
                     <div class="col-5"><input type="text" name="edit_particulars" class="form-control form-control-sm" value="${p}"></div>
                     <div class="col-2"><input type="number" name="edit_quantities" class="form-control form-control-sm" value="${q}"></div>
-                    <div class="col-5"><input type="number" step="0.01" name="edit_amounts" class="form-control form-control-sm" value="${total}" placeholder="Total Line item Cost"></div>
+                    <div class="col-5"><input type="number" step="0.01" name="edit_amounts" class="form-control form-control-sm" value="${total}"></div>
                 </div>`;
             });
-
             const myModal = new bootstrap.Modal(document.getElementById('editModal'));
             myModal.show();
         }
 
-        window.onload = function() {
-            handleCategoryUI();
-        };
+        window.onload = function() { handleCategoryUI(); };
     </script>
 </body>
 </html>
