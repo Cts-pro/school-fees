@@ -99,24 +99,4 @@ def add_student():
         return redirect(url_for('login'))
         
     student_name = request.form['student_name']
-    student_class = request.form['student_class'].strip()
-    category = request.form['category'].strip()
-    particulars = request.form.get('particulars', '')
-    quantities = request.form.get('quantities', '')
-    amounts_str = request.form.get('amounts', '')
-    
-    if not particulars.strip():
-        particulars = "Default Item"
-    if not quantities.strip():
-        quantities = "1"
-    if not amounts_str.strip():
-        amounts_str = "0.00"
-    
-    try:
-        amounts_list = [float(x.strip() if x.strip() else 0) for x in amounts_str.split(',')]
-        total_amount = sum(amounts_list)
-    except ValueError:
-        total_amount = 0.0
-        
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    if student_class not in wb.sheetnames:
+    student_class = request.form
