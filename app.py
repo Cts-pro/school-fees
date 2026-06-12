@@ -135,4 +135,96 @@ def generate_invoice(sheet_name, row_id):
         ws = wb[sheet_name]
         for row in range(2, ws.max_row + 1):
             if ws.cell(row=row, column=1).value == row_id:
-                ws.cell(row=row, column=8).value = "
+                ws.cell(row=row, column=8).value = "Invoiced"
+                ws.cell(row=row, column=9).value = 1
+                for col in range(1, 10):
+                    ws.cell(row=row, column=col).fill = fill_locked
+                    ws.cell(row=row, column=col).font = font_locked
+                
+                record_data = {
+                    "id": row_id,
+                    "name": ws.cell(row=row, column=2).value,
+                    "category": str(ws.cell(row=row, column=3).value or "Fees").strip(),
+                    "particulars": str(ws.cell(row=row, column=4).value).split(','),
+                    "quantities": str(ws.cell(row=row, column=5).value).split(','),
+                    "amounts": str(ws.cell(row=row, column=6).value).split(','),
+                    "total": float(ws.cell(row=row, column=7).value or 0.0),
+                    "class": sheet_name
+                }
+                wb.save(EXCEL_FILE)
+                break
+
+    table_rows_html = ""
+    for i in range(len(record_data['particulars'])):
+        part = record_data['particulars'][i].strip()
+        qty = record_data['quantities'][i].strip() if i < len(record_data['quantities']) else "1"
+        amt = record_data['amounts'][i].strip() if i < len(record_data['amounts']) else "0.00"
+        table_rows_html += f"<tr><td class='text-center'>{i+1}</td><td>{part}</td><td class='text-center'>{qty}</td><td class='text-end'>₹ {float(amt):,.2f}</td></tr>"
+
+    return f"""
+    <html>
+    <head>
+        <title>Invoice - {record_data['name']}</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+        <style>
+            body {{ background: #fdfdfd; font-family: Arial, sans-serif; color: #000; }}
+            .outer-container {{ max-width: 850px; margin: 20px auto; padding: 20px; border: 1px solid #ccc; background: #fff; }}
+            .header-border {{ border: 1px solid #000; padding: 20px; }}
+            .school-title {{ font-size: 24px; font-weight: bold; margin-bottom: 2px; text-transform: uppercase; }}
+            .trust-title {{ font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #333; }}
+            .meta-info {{ font-size: 13px; margin-bottom: 2px; }}
+            .table-invoice th, .table-invoice td {{ border: 1px solid #000 !important; font-size: 14px; padding: 6px; }}
+            .table-invoice th {{ background-color: #f2f2f2 !important; }}
+        </style>
+    </head>
+    <body>
+        <div class="outer-container">
+            <div class="header-border">
+                <div class="row align-items-center mb-3">
+                    <div class="col-3 text-center">
+                        <div style="border: 1px solid #333; padding: 15px; font-size: 11px; font-weight: bold;">LOGO PLACEHOLDER</div>
+                    </div>
+                    <div class="col-9 text-center" style="padding-right: 50px;">
+                        <div class="school-title">VINAYAKA HIGH SCHOOL</div>
+                        <div class="trust-title">SRI ANNAPOORNESHWARI EDUCATION TRUST ®</div>
+                        <div class="meta-info">Taripura - 571415, Srirangapatna Taluk, Mandya District</div>
+                        <div class="meta-info"><strong>Mob:</strong> 8971577685</div>
+                    </div>
+                </div>
+                <hr style="border-top: 1px solid #000; margin: 15px 0;">
+                <div class="row mb-4" style="font-size: 15px; line-height: 1.6;">
+                    <div class="col-6">
+                        <div><strong>Invoice #:</strong> {record_data['id']}</div>
+                        <div><strong>Invoice date:</strong> 11-06-2026</div>
+                        <div><strong>Amount:</strong> ₹ {record_data['total']:,.2f}</div>
+                    </div>
+                    <div class="col-6" style="padding-left: 80px;">
+                        <div><strong>Name:</strong> {record_data['name']}</div>
+                        <div><strong>Class:</strong> {record_data['class']}</div>
+                        <div><strong>Guardian:</strong> --</div>
+                    </div>
+                </div>
+                <table class="table table-bordered table-invoice mb-0">
+                    <thead><tr><th class="text-center" style="width: 80px;">SL. No</th><th>Particulars</th><th class="text-center" style="width: 100px;">Qty</th><th class="text-end" style="width: 160px;">Amount</th></tr></thead>
+                    <tbody>
+                        {table_rows_html}
+                        <tr class="fw-bold"><td colspan="3" class="text-end">Total</td><td class="text-end">₹ {record_data['total']:,.2f}</td></tr>
+                    </tbody>
+                </table>
+                <div class="row align-items-end mt-5" style="min-height: 80px;"><div class="col-12 text-end" style="font-size: 14px; padding-right: 30px;"><div>Signature</div></div></div>
+            </div>
+            <div class="d-print-none mt-4 d-flex gap-2"><button class="btn btn-primary w-100 fw-bold" onclick="window.print()">Print This Invoice</button><a href="/" class="btn btn-outline-secondary w-100">Return to Portal</a></div>
+        </div>
+    </body>
+    </html>
+    """
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+init_excel()
+
+if __name__ == '__main__':
+    app.run(debug=False)
